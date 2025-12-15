@@ -98,3 +98,16 @@ To use these numbers in your other project, you can query the Home Assistant RES
 }
 ```
 You can essentially "poll" this endpoint or use the WebSocket API to subscribe to changes.
+
+### Live Badges Proxy (PHP)
+To safely expose these values to external services (like shields.io badges) without exposing your Home Assistant instance or API tokens directly, use the provided PHP script in `web/cr_light_stats.php`.
+
+**Why use this?**
+- **Security**: Your Long-Lived Access Token stays server-side and is never exposed to the client.
+- **Safety**: The script uses a strict allowlist. It *only* fetches `sensor.circadian_brightness` and `sensor.circadian_color_temp`. An attacker cannot modify the request to read other sensitive entities.
+
+**Setup:**
+1. Copy `web/cr_light_stats.php` to your web server (active reverse proxy).
+2. Edit the file and paste your **Long-Lived Access Token** into the `$token` variable.
+3. Point your badges or external tools to this script URL.
+
