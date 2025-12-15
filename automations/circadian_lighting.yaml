@@ -1,0 +1,30 @@
+alias: Circadian Lighting
+description: Adjust circadian lights.
+triggers:
+  - entity_id: sensor.circadian_brightness
+    for: "00:00:02"
+    trigger: state
+  - entity_id: sensor.circadian_color_temp
+    for: "00:00:02"
+    trigger: state
+  - entity_id: sensor.circadian_target_lights
+    for: "00:00:02"
+    trigger: state
+    enabled: true
+  - event: start
+    trigger: homeassistant
+conditions:
+  - condition: template
+    value_template: >
+      {{ state_attr('sensor.circadian_target_lights','entity_id') | length > 0
+      }}
+actions:
+  - action: lifx.set_state
+    data:
+      brightness: "{{ states('sensor.circadian_brightness') | int }}"
+      color_temp_kelvin: "{{ states('sensor.circadian_color_temp') | int }}"
+      transition: 1
+    target:
+      entity_id: "{{ state_attr('sensor.circadian_target_lights','entity_id') }}"
+mode: queued
+max: 5

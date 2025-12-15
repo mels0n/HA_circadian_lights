@@ -1,0 +1,164 @@
+circadian_lighting:
+  input_number:
+    circadian_min_kelvin:
+      name: Circadian Min Kelvin
+      min: 1500
+      max: 9000
+      step: 100
+      initial: 2500
+      icon: mdi:thermometer-low
+    
+    circadian_max_kelvin:
+      name: Circadian Max Kelvin
+      min: 1500
+      max: 9000
+      step: 100
+      initial: 6000
+      icon: mdi:thermometer-high
+
+    circadian_min_brightness:
+      name: Circadian Min Brightness
+      min: 1
+      max: 255
+      step: 1
+      initial: 150
+      icon: mdi:brightness-5
+
+    circadian_max_brightness:
+      name: Circadian Max Brightness
+      min: 1
+      max: 255
+      step: 1
+      initial: 255
+      icon: mdi:brightness-7
+
+  template:
+    - sensor:
+        - name: "Circadian Color Temp"
+          unique_id: circadian_color_temp
+          unit_of_measurement: "K"
+          icon: mdi:thermometer-lines
+          state: >-
+            {# Retrieve Input Settings #}
+            {% set min_k = states('input_number.circadian_min_kelvin') | int %}
+            {% set max_k = states('input_number.circadian_max_kelvin') | int %}
+            
+            {# Retrieve Sun/Time Sensors #}
+            {% set dawn = states("sensor.today_dawn") %}
+            {% set noon = states("sensor.today_noon") %}
+            {% set dusk = states("sensor.today_dusk") %}
+            
+            {# Safety check to ensure sensors are ready #}
+            {% if dawn not in ['unknown', 'unavailable'] and noon not in ['unknown', 'unavailable'] and dusk not in ['unknown', 'unavailable'] %}
+            
+              {% set now_ts = as_timestamp(now()) %}
+              {% set dawn_ts = as_timestamp(dawn) %}
+              {% set noon_ts = as_timestamp(noon) %}
+              {% set dusk_ts = as_timestamp(dusk) %}
+              
+              {% set percent_before_noon = (now_ts - dawn_ts) / (noon_ts - dawn_ts) %}
+              {% set percent_after_noon = (now_ts - noon_ts) / ((dusk_ts + 7200) - noon_ts) %}
+              
+              {% if now_ts < noon_ts and now_ts >= dawn_ts %}
+                 {% set base_color_temp = (max_k - min_k) * percent_before_noon + min_k %}
+              {% elif now_ts >= noon_ts and now_ts <= (dusk_ts + 7200) %}
+                 {% set base_color_temp = (max_k - min_k) * (1 - percent_after_noon) + min_k %}
+              {% else %}
+                 {% set base_color_temp = min_k %}
+              {% endif %}
+
+              {{ base_color_temp | round(0) }}
+            
+            {% else %}
+              {{ min_k }}
+            {% endif %}
+
+        - name: "Circadian Brightness"
+          unique_id: circadian_brightness
+          unit_of_measurement: ""
+          icon: mdi:brightness-auto
+          state: >-
+            {# Retrieve Input Settings #}
+            {% set min_b = states('input_number.circadian_min_brightness') | int %}
+            {% set max_b = states('input_number.circadian_max_brightness') | int %}
+
+            {# Retrieve Sun/Time Sensors #}
+            {% set dawn = states("sensor.today_dawn") %}
+            {% set noon = states("sensor.today_noon") %}
+            {% set dusk = states("sensor.today_dusk") %}
+
+            {# Safety check #}
+            {% if dawn not in ['unknown', 'unavailable'] and noon not in ['unknown', 'unavailable'] and dusk not in ['unknown', 'unavailable'] %}
+            
+              {% set now_ts = as_timestamp(now()) %}
+              {% set dawn_ts = as_timestamp(dawn) %}
+              {% set noon_ts = as_timestamp(noon) %}
+              {% set dusk_ts = as_timestamp(dusk) %}
+              
+              {% set percent_before_noon = (now_ts - dawn_ts) / (noon_ts - dawn_ts) %}
+              {% set percent_after_noon = (now_ts - noon_ts) / ((dusk_ts + 7200) - noon_ts) %}
+              
+              {% if now_ts < noon_ts and now_ts >= dawn_ts %}
+                 {% set base_brightness = (max_b - min_b) * percent_before_noon + min_b %}
+              {% elif now_ts >= noon_ts and now_ts <= (dusk_ts + 7200) %}
+                 {% set base_brightness = (max_b - min_b) * (1 - percent_after_noon) + min_b %}
+              {% else %}
+                 {% set base_brightness = min_b %}
+              {% endif %}
+
+              {{ base_brightness | round(0) }}
+
+            {% else %}
+               {{ min_b }}
+            {% endif %}
+
+        - name: "Circadian Target Lights"
+          unique_id: "circadian_target_lights"
+          state: >-
+            {{ this.attributes.get('entity_id', []) | count }}
+          attributes:
+            entity_id: >-
+              {%- set T = states("sensor.circadian_color_temp") | int %}
+              {%- set B = states("sensor.circadian_brightness") | int %}
+
+              {# Device capability ranges #}
+              {%- set T_min, T_max = 1500, 9000 %}
+              {%- set B_min, B_max = 0, 255 %}
+
+              {# Full-range widths #}
+              {%- set T_width = T_max - T_min %}
+              {%- set B_width = B_max - B_min %}
+
+              {# ±10% of full range #}
+              {%- set T_margin = (0.1 * T_width) | int %}
+              {%- set B_margin = (0.1 * B_width) | int %}
+
+              {# Compute actual allowed windows, clamped to device limits #}
+              {%- set T_low = [T_min, T - T_margin] | max %}
+              {%- set T_high = [T_max, T + T_margin] | min %}
+              {%- set B_low = [B_min, B - B_margin] | max %}
+              {%- set B_high = [B_max, B + B_margin] | min %}
+
+              {# Off lights that support color_temp #}
+              {%- set lightsOff = expand(states.light)
+                | selectattr("state", "==", "off")
+                | selectattr("attributes.supported_color_modes", "defined")
+                | selectattr("attributes.supported_color_modes", "contains", "color_temp")
+                | map(attribute="entity_id")
+                | list %}
+
+              {# On lights in color_temp mode within ±10% window #}
+              {%- set lightsOn = expand(states.light)
+                | selectattr("state", "==", "on")
+                | selectattr("attributes.color_mode", "defined")
+                | selectattr("attributes.color_mode", "==", "color_temp")
+                | selectattr("attributes.color_temp_kelvin", "defined")
+                | selectattr("attributes.color_temp_kelvin", ">=", T_low)
+                | selectattr("attributes.color_temp_kelvin", "<=", T_high)
+                | selectattr("attributes.brightness", "defined")
+                | selectattr("attributes.brightness", ">=", B_low)
+                | selectattr("attributes.brightness", "<=", B_high)
+                | map(attribute="entity_id")
+                | list %}
+
+              {{ (lightsOn + lightsOff) | unique | select('defined') | list }}

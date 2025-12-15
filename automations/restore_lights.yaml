@@ -1,0 +1,20 @@
+alias: Sentence Restore Lights
+description: "Restore a specific light to circadian values via voice command."
+triggers:
+  - trigger: conversation
+    command:
+      - (fix|restore) [the] {light_name} [light(s)]
+conditions: []
+actions:
+  - target:
+      entity_id: >-
+        {{ states | selectattr('entity_id', 'match', 'light.' +
+        trigger.slots.light_name.replace(' ', '_')) | expand |
+        map(attribute='entity_id') | list }}
+    data:
+      color_temp_kelvin: "{{ states('sensor.circadian_color_temp') }}"
+      brightness: "{{ states('sensor.circadian_brightness') }}"
+      transition: 10
+    action: lifx.set_state
+  - set_conversation_response: The {{trigger.slots.light_name}} is being restored.
+mode: single
