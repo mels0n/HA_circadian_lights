@@ -1,7 +1,7 @@
 # Home Assistant Circadian Lights
 
-![Circadian Brightness](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcr_lights.melson.us%2Fcr_light_stats.php&query=%24%5B%27sensor.circadian_brightness%27%5D&label=Brightness&suffix=%25&color=blue)
-![Color Temp](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcr_lights.melson.us%2Fcr_light_stats.php&query=%24%5B%27sensor.circadian_color_temp%27%5D&label=Target%20Lights&suffix=%25&color=orange)
+![Circadian Brightness](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcr_lights.melson.us%2Fcr_light_stats.php&query=%24%5B%27sensor.circadian_brightness%27%5D&label=Brightness&color=blue)
+![Color Temp](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcr_lights.melson.us%2Fcr_light_stats.php&query=%24%5B%27sensor.circadian_color_temp%27%5D&label=Color%20Temp&color=orange)
 
 *Badges above represent the live values of the lights currently in my house.*
 
