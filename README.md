@@ -4,6 +4,7 @@
 ![Color Temp](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcr_lights.melson.us%2Fcr_light_stats.php&query=%24%5B%27sensor.circadian_color_temp%27%5D&label=Color%20Temp&color=orange)
 
 *Badges above represent the live values of the lights currently in my house.*
+*Scales: Brightness (0-255), Color Temp (Kelvin)*
 
 This repository documents the circadian lighting setup for this Home Assistant instance.
 It includes a custom circadian calculation engine and automations specifically designed for **LIFX lights**.
