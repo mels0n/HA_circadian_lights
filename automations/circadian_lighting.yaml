@@ -1,30 +1,40 @@
 alias: Circadian Lighting
-description: Adjust circadian lights.
+description: >-
+  Pushes the current circadian colour temperature and brightness to every
+  light in sensor.circadian_target_lights. Re-runs whenever the targets or the
+  eligible list change, and once on Home Assistant start so bulbs come back in
+  sync.
 triggers:
-  - entity_id: sensor.circadian_brightness
-    for: "00:00:02"
-    trigger: state
-  - entity_id: sensor.circadian_color_temp
-    for: "00:00:02"
-    trigger: state
-  - entity_id: sensor.circadian_target_lights
-    for: "00:00:02"
-    trigger: state
-    enabled: true
-  - event: start
-    trigger: homeassistant
+  # The three sensors usually change together. A short debounce plus
+  # mode: restart collapses that burst into one sweep.
+  - trigger: state
+    entity_id: sensor.circadian_brightness
+    for: "00:00:05"
+  - trigger: state
+    entity_id: sensor.circadian_color_temp
+    for: "00:00:05"
+  - trigger: state
+    entity_id: sensor.circadian_target_lights
+    for: "00:00:05"
+  - trigger: homeassistant
+    event: start
 conditions:
-  - condition: template
-    value_template: >
-      {{ state_attr('sensor.circadian_target_lights','entity_id') | length > 0
-      }}
+  # The sensor's state is the number of eligible lights.
+  - condition: numeric_state
+    entity_id: sensor.circadian_target_lights
+    above: 0
 actions:
   - action: lifx.set_state
+    # One unreachable bulb must not abort the sweep for the rest.
+    continue_on_error: true
+    target:
+      entity_id: >-
+        {{ state_attr('sensor.circadian_target_lights', 'entity_id')
+           | reject('is_state', 'unavailable')
+           | reject('is_state', 'unknown')
+           | list }}
     data:
       brightness: "{{ states('sensor.circadian_brightness') | int }}"
       color_temp_kelvin: "{{ states('sensor.circadian_color_temp') | int }}"
       transition: 1
-    target:
-      entity_id: "{{ state_attr('sensor.circadian_target_lights','entity_id') }}"
-mode: queued
-max: 5
+mode: restart

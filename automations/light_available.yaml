@@ -1,0 +1,30 @@
+alias: Light Available
+description: >-
+  When a light comes back from unavailable (power cut, WiFi drop, someone
+  flipped the wall switch), push the current circadian values to it right
+  away, so it does not sit at whatever state it powered up in until the next
+  scheduled sweep.
+triggers:
+  # Listens to every state change, then filters. A plain state trigger needs
+  # a fixed entity list, which goes stale as lights are added; this covers
+  # every light with no upkeep, at the cost of evaluating two cheap
+  # conditions on each state change in the house.
+  - trigger: event
+    event_type: state_changed
+conditions:
+  - "{{ trigger.event.data.entity_id.startswith('light.')
+        and trigger.event.data.old_state is not none
+        and trigger.event.data.new_state is not none }}"
+  - "{{ trigger.event.data.old_state.state not in ('on', 'off')
+        and trigger.event.data.new_state.attributes.color_mode == 'color_temp' }}"
+actions:
+  - action: lifx.set_state
+    continue_on_error: true
+    target:
+      entity_id: "{{ trigger.event.data.entity_id }}"
+    data:
+      color_temp_kelvin: "{{ states('sensor.circadian_color_temp') | int }}"
+      brightness: "{{ states('sensor.circadian_brightness') | int }}"
+# Many bulbs can recover at once after a power cut.
+mode: parallel
+max: 25

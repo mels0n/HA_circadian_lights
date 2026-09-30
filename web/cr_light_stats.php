@@ -1,60 +1,58 @@
 <?php
-// --- CONFIGURATION ---
-// How Reverse Proxy talks to HA 
-$ha_url = "http://homeassistant:8123"; 
+// Read-only proxy that publishes a fixed allow-list of Home Assistant
+// entity states as JSON, for shields.io badges and other public pages.
+//
+// The token never reaches the browser, and callers cannot choose which
+// entities are read: only the ids in $entities are ever fetched, and only
+// their `state` is returned (no attributes).
+//
+// Configuration comes from the web server's environment, never this file:
+//   HA_URL    base URL of Home Assistant as the proxy sees it
+//             (default http://homeassistant:8123)
+//   HA_TOKEN  a long-lived access token (Profile > Security in Home Assistant)
 
-// PASTE YOUR LONG-LIVED TOKEN BELOW
-$token = "YOUR_LONG_LIVED_ACCESS_TOKEN_HERE";
+$ha_url = getenv('HA_URL') ?: 'http://homeassistant:8123';
+$token  = getenv('HA_TOKEN');
 
-// The standard sensors you always want
 $entities = [
     'sensor.circadian_brightness',
-    'sensor.circadian_color_temp'
+    'sensor.circadian_color_temp',
 ];
 
-// --- HELPER FUNCTION ---
-function get_entity($entity_id) {
-    global $ha_url, $token;
-    
-    // Initialize cURL
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, "$ha_url/api/states/$entity_id");
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    
-    // Set headers (This is where the secret token lives safely)
+header('Content-Type: application/json');
+header('Cache-Control: public, max-age=60');
+
+if (!$token) {
+    http_response_code(500);
+    echo json_encode(['error' => 'HA_TOKEN is not set']);
+    exit;
+}
+
+function get_state($ha_url, $token, $entity_id) {
+    $ch = curl_init("$ha_url/api/states/$entity_id");
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         "Authorization: Bearer $token",
-        "Content-Type: application/json"
+        'Content-Type: application/json',
     ]);
-    
-    // Execute and close
-    $result = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $body = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-    // Basic error handling
-    if ($http_code != 200) {
-        return null; 
+    if ($code !== 200 || $body === false) {
+        return null;
     }
-    
-    return json_decode($result, true);
+    $data = json_decode($body, true);
+    return $data['state'] ?? null;
 }
 
-// --- MAIN LOGIC ---
 $output = [];
-
-// Fetch the default required sensors
 foreach ($entities as $id) {
-    $data = get_entity($id);
-    if ($data) {
-        // We only expose the state to keep it clean (and safe)
-        $output[$id] = $data['state']; 
+    $state = get_state($ha_url, $token, $id);
+    if ($state !== null) {
+        $output[$id] = $state;
     }
 }
 
-
-// --- OUTPUT ---
-// Send as JSON so your external app can easily read it
-header('Content-Type: application/json');
 echo json_encode($output);
-?>

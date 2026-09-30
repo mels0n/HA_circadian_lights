@@ -1,20 +1,27 @@
 alias: Sentence Restore Lights
-description: "Restore a specific light to circadian values via voice command."
+description: >-
+  Voice command for Assist: "restore the kitchen lights" (or "fix ...") puts
+  the matched lights back on the circadian values, undoing a manual override.
+  Once a light is back within range, sensor.circadian_target_lights picks it
+  up again and the main automation keeps it in step.
 triggers:
   - trigger: conversation
     command:
-      - (fix|restore) [the] {light_name} [light(s)]
-conditions: []
+      - "(fix|restore) [the] {light_name} [light(s)]"
 actions:
-  - target:
+  - action: lifx.set_state
+    target:
+      # Prefix match on the spoken name (spaces become underscores), so
+      # "office" also catches light.office_lamp. That is what makes plural
+      # phrases like "restore the office lights" work.
       entity_id: >-
-        {{ states | selectattr('entity_id', 'match', 'light.' +
-        trigger.slots.light_name.replace(' ', '_')) | expand |
-        map(attribute='entity_id') | list }}
+        {{ states.light
+           | selectattr('entity_id', 'match', 'light.' ~ trigger.slots.light_name | replace(' ', '_'))
+           | map(attribute='entity_id')
+           | list }}
     data:
-      color_temp_kelvin: "{{ states('sensor.circadian_color_temp') }}"
-      brightness: "{{ states('sensor.circadian_brightness') }}"
+      color_temp_kelvin: "{{ states('sensor.circadian_color_temp') | int }}"
+      brightness: "{{ states('sensor.circadian_brightness') | int }}"
       transition: 10
-    action: lifx.set_state
-  - set_conversation_response: The {{trigger.slots.light_name}} is being restored.
+  - set_conversation_response: "The {{ trigger.slots.light_name }} is being restored."
 mode: single

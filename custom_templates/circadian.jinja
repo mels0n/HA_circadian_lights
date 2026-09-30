@@ -1,0 +1,41 @@
+{#-
+  circadian(low, high, fallback)
+
+  Returns a value on a sun-driven curve between `low` and `high`:
+    - dawn -> solar noon: rises linearly from low to high
+    - solar noon -> dusk + 2h: falls linearly from high back to low
+    - overnight: holds at low
+
+  Used for both colour temperature (Kelvin) and brightness (0-255), so the
+  curve is defined once. `fallback` is the value to keep if sun.sun has no
+  dawn/noon/dusk yet (e.g. during startup); pass `this.state` from a template
+  sensor. Imported macros cannot see the caller's `this`, so it is an argument.
+
+  Reads only sun.sun, which ships with Home Assistant. No extra integration.
+-#}
+{%- macro circadian(low, high, fallback) -%}
+{%- set d = state_attr('sun.sun', 'next_dawn') -%}
+{%- set n = state_attr('sun.sun', 'next_noon') -%}
+{%- set k = state_attr('sun.sun', 'next_dusk') -%}
+{%- if d is none or n is none or k is none -%}
+{{ fallback if fallback not in [none, '', 'unknown', 'unavailable'] else low }}
+{%- else -%}
+{#- next_* may be tomorrow's event, so keep only its time of day and pin it to today. -#}
+{%- set dawn = as_datetime(d).astimezone() -%}
+{%- set noon = as_datetime(n).astimezone() -%}
+{%- set dusk = as_datetime(k).astimezone() -%}
+{%- set ts_dawn = as_timestamp(now().replace(hour=dawn.hour, minute=dawn.minute, second=0, microsecond=0)) -%}
+{%- set ts_noon = as_timestamp(now().replace(hour=noon.hour, minute=noon.minute, second=0, microsecond=0)) -%}
+{#- The evening ramp ends 2 hours after dusk, so indoor light warms gradually into the night. -#}
+{%- set ts_end = as_timestamp(now().replace(hour=dusk.hour, minute=dusk.minute, second=0, microsecond=0)) + 7200 -%}
+{%- set ts_now = as_timestamp(now()) -%}
+{%- if ts_dawn <= ts_now < ts_noon -%}
+{%- set v = low + (high - low) * (ts_now - ts_dawn) / (ts_noon - ts_dawn) -%}
+{%- elif ts_noon <= ts_now <= ts_end -%}
+{%- set v = low + (high - low) * (1 - (ts_now - ts_noon) / (ts_end - ts_noon)) -%}
+{%- else -%}
+{%- set v = low -%}
+{%- endif -%}
+{{ [v, low] | max | round(0) | int }}
+{%- endif -%}
+{%- endmacro -%}

@@ -1,0 +1,75 @@
+# Circadian lighting: the three sensors everything else reads.
+#
+# Requires custom_templates/circadian.jinja (the shared curve macro).
+# Tune the ranges by editing the numbers passed to circadian() below, or
+# point them at number helpers you create in the UI (see README, "Tuning").
+
+template:
+  - sensor:
+      - name: "Circadian Color Temp"
+        unique_id: circadian_color_temp
+        unit_of_measurement: "K"
+        icon: mdi:thermometer-lines
+        state: >-
+          {% from 'circadian.jinja' import circadian %}
+          {{ circadian(2500, 9000, this.state) }}
+
+      - name: "Circadian Brightness"
+        unique_id: circadian_brightness
+        icon: mdi:brightness-auto
+        state: >-
+          {% from 'circadian.jinja' import circadian %}
+          {{ circadian(150, 255, this.state) }}
+
+      # State = how many lights are eligible; the list itself is the
+      # entity_id attribute. A light is eligible when it is:
+      #   - OFF and supports colour temperature (LIFX accepts state while off,
+      #     so it turns on at the right values), or
+      #   - ON, in colour-temperature mode, and within +/-10% of the current
+      #     targets. Anything further off than that was set by hand (a scene,
+      #     a colour, a dim for movie night) and is left alone.
+      - name: "Circadian Target Lights"
+        unique_id: circadian_target_lights
+        state: >-
+          {{ this.attributes.get('entity_id', []) | count }}
+        attributes:
+          entity_id: >-
+            {#- expand() flattens light groups into their member bulbs, so a group
+                is never targeted alongside (or instead of) its members. #}
+            {%- set T = states('sensor.circadian_color_temp') | int(0) %}
+            {%- set B = states('sensor.circadian_brightness') | int(0) %}
+            {%- if T == 0 and B == 0 %}{{ [] }}{%- else %}
+
+            {#- Device capability ranges (LIFX) #}
+            {%- set T_min, T_max = 1500, 9000 %}
+            {%- set B_min, B_max = 0, 255 %}
+
+            {#- +/-10% of the full device range #}
+            {%- set T_margin = (0.1 * (T_max - T_min)) | int %}
+            {%- set B_margin = (0.1 * (B_max - B_min)) | int %}
+            {%- set T_low = [T_min, T - T_margin] | max %}
+            {%- set T_high = [T_max, T + T_margin] | min %}
+            {%- set B_low = [B_min, B - B_margin] | max %}
+            {%- set B_high = [B_max, B + B_margin] | min %}
+
+            {%- set lights_off = expand(states.light)
+              | selectattr('state', '==', 'off')
+              | selectattr('attributes.supported_color_modes', 'defined')
+              | selectattr('attributes.supported_color_modes', 'contains', 'color_temp')
+              | map(attribute='entity_id')
+              | list %}
+
+            {%- set lights_on = expand(states.light)
+              | selectattr('state', '==', 'on')
+              | selectattr('attributes.color_mode', 'defined')
+              | selectattr('attributes.color_mode', '==', 'color_temp')
+              | selectattr('attributes.color_temp_kelvin', 'defined')
+              | selectattr('attributes.color_temp_kelvin', '>=', T_low)
+              | selectattr('attributes.color_temp_kelvin', '<=', T_high)
+              | selectattr('attributes.brightness', 'defined')
+              | selectattr('attributes.brightness', '>=', B_low)
+              | selectattr('attributes.brightness', '<=', B_high)
+              | map(attribute='entity_id')
+              | list %}
+
+            {{ (lights_on + lights_off) | unique | list }}{%- endif %}
