@@ -71,7 +71,36 @@ Point a shields.io [dynamic JSON badge](https://shields.io/badges/dynamic-json-b
 
 ## Secrets
 
-The proxy needs one secret: a Home Assistant long-lived access token (Profile > Security > Long-lived access tokens). Set it as the `HA_TOKEN` environment variable on the web server (and `HA_URL` if Home Assistant is not at `http://homeassistant:8123`). Never paste the token into the PHP file or commit it. Nothing else in this repository needs credentials.
+The proxy needs one secret: a Home Assistant long-lived access token (Profile > Security > Long-lived access tokens). Never paste it into the PHP file or commit it. Nothing else in this repository needs credentials.
+
+The proxy looks for the token in this order:
+
+1. **A file**, `/run/secrets/ha_token` by default (override the path with `HA_TOKEN_FILE`). This is the recommended setup, because it keeps the token out of compose files, environment listings and synced folders.
+2. **The `HA_TOKEN` environment variable.** Many PHP-FPM setups clear the environment before running scripts (`clear_env = yes`), so check that yours passes it through before relying on this.
+
+Set `HA_URL` if Home Assistant is not at `http://homeassistant:8123`.
+
+**Docker Swarm.** Create the secret on a manager node without the token touching a file or your shell history:
+
+```bash
+read -rsp "Paste HA token: " T; echo; printf %s "$T" | docker secret create ha_token -; unset T
+```
+
+Then attach it to the web server's service in your stack file:
+
+```yaml
+services:
+  swag:            # or whichever container serves the PHP
+    secrets:
+      - ha_token
+secrets:
+  ha_token:
+    external: true
+```
+
+To attach it to a running service without redeploying the whole stack: `docker service update --secret-add ha_token <service>`. A plain `docker stack deploy` re-resolves every `:latest` image in the stack and can restart unrelated services.
+
+**Rotating the token.** Create the new token in Home Assistant, create a new secret (Swarm secrets are immutable, so use a new name such as `ha_token_v2`), swap it on the service with `--secret-rm ha_token --secret-add source=ha_token_v2,target=ha_token`, confirm the badges still load, then delete the old token in Home Assistant.
 
 ## License
 

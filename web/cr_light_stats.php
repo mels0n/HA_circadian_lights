@@ -6,13 +6,21 @@
 // entities are read: only the ids in $entities are ever fetched, and only
 // their `state` is returned (no attributes).
 //
-// Configuration comes from the web server's environment, never this file:
-//   HA_URL    base URL of Home Assistant as the proxy sees it
-//             (default http://homeassistant:8123)
-//   HA_TOKEN  a long-lived access token (Profile > Security in Home Assistant)
+// Token lookup, first match wins (never put the token in this file):
+//   1. the file named by HA_TOKEN_FILE, default /run/secrets/ha_token
+//      (a Docker secret: docker secret create ha_token -)
+//   2. the HA_TOKEN environment variable (only works if PHP-FPM passes the
+//      environment through, i.e. clear_env = no)
+// HA_URL is the base URL of Home Assistant as the proxy sees it
+// (default http://homeassistant:8123).
 
 $ha_url = getenv('HA_URL') ?: 'http://homeassistant:8123';
-$token  = getenv('HA_TOKEN');
+
+$token_file = getenv('HA_TOKEN_FILE') ?: '/run/secrets/ha_token';
+$token = is_readable($token_file) ? trim(file_get_contents($token_file)) : '';
+if ($token === '') {
+    $token = trim((string) getenv('HA_TOKEN'));
+}
 
 $entities = [
     'sensor.circadian_brightness',
@@ -22,9 +30,9 @@ $entities = [
 header('Content-Type: application/json');
 header('Cache-Control: public, max-age=60');
 
-if (!$token) {
+if ($token === '') {
     http_response_code(500);
-    echo json_encode(['error' => 'HA_TOKEN is not set']);
+    echo json_encode(['error' => 'no Home Assistant token configured']);
     exit;
 }
 
